@@ -1,5 +1,14 @@
 require("dotenv").config(); // Cargar variables del .env
 
+const mongoose = require("mongoose");
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+.then(() => console.log("🔗 Conectado a MongoDB"))
+.catch((err) => console.error("❌ Error al conectar a MongoDB:", err));
+
+const Cita = require("./models/Cita");
 const express = require("express");
 const bodyParser = require("body-parser");
 const request = require("request");
@@ -87,13 +96,35 @@ app.post("/webhook", (req, res) => {
       const message = webhook_event.message?.text;
 
       if (message) {
-        if (esDenuncia(message)) {
+        const mensajeMin = message.toLowerCase();
+      
+        if (esDenuncia(mensajeMin)) {
           callSendAPI(sender_psid, "Gracias por tu reporte. El personal del ayuntamiento lo atenderá.");
           enviarCorreoDenuncia(message, sender_psid);
+        
+        } else if (/quiero.*cita|agendar.*cita|hacer.*cita|solicitar.*cita/.test(mensajeMin)) {
+          // Aquí se guarda la cita de forma provisional
+          const nuevaCita = new Cita({
+            psid: sender_psid,
+            nombre: "Nombre demo", // En el futuro puedes pedir el nombre al usuario
+            fecha: "2025-05-20 10:00", // Puedes ajustar esto dinámicamente más adelante
+            descripcion: "Revisión general",
+          });
+      
+          nuevaCita.save()
+            .then(() => {
+              callSendAPI(sender_psid, "Tu cita ha sido registrada. ¡Gracias!");
+            })
+            .catch((err) => {
+              console.error("Error al guardar la cita:", err);
+              callSendAPI(sender_psid, "Ocurrió un error al registrar tu cita.");
+            });
+      
         } else {
           callSendAPI(sender_psid, `Recibí tu mensaje: "${message}"`);
         }
       }
+      
     });
 
     res.status(200).send("EVENT_RECEIVED");
